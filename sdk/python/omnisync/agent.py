@@ -41,17 +41,23 @@ class Agent:
     
     async def handle_message(self, message: IntentMessage) -> Optional[IntentMessage]:
         """Handle incoming message"""
+        # Skip processing if this is a response to our message (to avoid loops)
+        if message.response_to:
+            logger.debug(f"Received response message {message.id} (response to {message.response_to}), skipping handler")
+            return None
+        
         handler = self.handlers.get(message.intent)
         if handler:
             try:
                 result = await handler(message) if asyncio.iscoroutinefunction(handler) else handler(message)
                 if isinstance(result, dict):
-                    # Create response message
-                    response = create_intent_message(
-                        intent=message.intent,
+                    # Create response message using base IntentMessage (not specific intent type)
+                    # This avoids validation errors since responses don't need to match the original intent structure
+                    response = IntentMessage(
+                        intent=message.intent,  # Keep same intent for tracking
                         from_agent=self.agent_id,
                         to_agent=message.from_agent,
-                        content=result,
+                        content=result,  # Response content can be any dict
                         metadata={
                             "framework": self.framework,
                             "model": self.model,
@@ -66,7 +72,7 @@ class Agent:
                 logger.error(f"Error handling message {message.id}: {e}")
                 return None
         else:
-            logger.warning(f"No handler for intent {message.intent}")
+            logger.debug(f"No handler for intent {message.intent} (this is normal for response messages)")
         return None
     
     async def send(
@@ -131,10 +137,15 @@ class Agent:
             try:
                 messages = await self.hub_client.get_messages(self.agent_id)
                 for message in messages:
-                    response = await self.handle_message(message)
-                    if response:
-                        await self.hub_client.send_message(response)
-                await asyncio.sleep(0.1)  # Small delay to prevent busy waiting
+                    # Only process messages that are not responses (responses are handled differently)
+                    if not message.response_to:
+                        response = await self.handle_message(message)
+                        if response:
+                            await self.hub_client.send_message(response)
+                    else:
+                        # Log response messages but don't process them through handlers
+                        logger.debug(f"Received response {message.id} from {message.from_agent}")
+                await asyncio.sleep(0.5)  # Increased delay to reduce polling frequency
             except Exception as e:
                 logger.error(f"Error in message loop: {e}")
                 await asyncio.sleep(1)
@@ -142,8 +153,11 @@ class Agent:
     async def stop(self):
         """Stop the agent"""
         self.running = False
+        # Give message loop a moment to finish
+        await asyncio.sleep(0.2)
         try:
-            await self.hub_client.disconnect()
+            if self.hub_client.session:
+                await self.hub_client.disconnect()
         except Exception as e:
             logger.error(f"Error disconnecting: {e}")
         logger.info(f"Agent {self.agent_id} stopped")

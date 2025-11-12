@@ -41,8 +41,8 @@ class IntentMessage(BaseMessage):
     """Core OSP intent message"""
     
     intent: IntentType
-    from_agent: str = Field(..., alias="from")
-    to_agent: str = Field(..., alias="to")
+    from_agent: str = Field(..., alias="from", serialization_alias="from")
+    to_agent: str = Field(..., alias="to", serialization_alias="to")
     metadata: Dict[str, Any] = {}
     content: Dict[str, Any] = {}
     context: Optional[Dict[str, Any]] = None
@@ -57,7 +57,9 @@ class IntentMessage(BaseMessage):
         return v
     
     class Config:
-        allow_population_by_field_name = True
+        # Pydantic v2 compatibility
+        validate_by_name = True  # Allows using field names OR aliases
+        populate_by_name = True  # Alias for validate_by_name
 
 
 class QueryIntent(IntentMessage):
@@ -163,14 +165,29 @@ def create_intent_message(
     
     msg_class = intent_classes.get(intent, IntentMessage)
     
-    # Create message using field names (Pydantic will handle aliases)
-    return msg_class(
-        intent=intent,
-        from_agent=from_agent,  # Use field name, alias is handled automatically
-        to_agent=to_agent,
-        content=content,
-        metadata=metadata or {},
-        context=context,
-        attachments=attachments or [],
-    )
+    # Create message - use field names with populate_by_name=True
+    # This allows us to use from_agent/to_agent even though aliases are "from"/"to"
+    try:
+        return msg_class(
+            intent=intent,
+            from_agent=from_agent,
+            to_agent=to_agent,
+            content=content,
+            metadata=metadata or {},
+            context=context,
+            attachments=attachments or [],
+        )
+    except Exception as e:
+        # Fallback: try using aliases directly if field names don't work
+        try:
+            return msg_class(
+                intent=intent,
+                **{"from": from_agent, "to": to_agent},
+                content=content,
+                metadata=metadata or {},
+                context=context,
+                attachments=attachments or [],
+            )
+        except:
+            raise e
 
