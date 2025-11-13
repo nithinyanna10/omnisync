@@ -7,6 +7,7 @@ import logging
 from typing import Any, Callable, Dict, Optional
 from .protocol import IntentMessage, IntentType, create_intent_message
 from .hub_client import HubClient
+from .content_types import normalize_content, ContentType
 
 logger = logging.getLogger(__name__)
 
@@ -41,6 +42,11 @@ class Agent:
     
     async def handle_message(self, message: IntentMessage) -> Optional[IntentMessage]:
         """Handle incoming message"""
+        # Anti-loop mechanism: Check TTL and hop count
+        if not message.increment_hop():
+            logger.warning(f"Message {message.id} exceeded TTL (hops: {message.metadata.get('hop_count')}, TTL: {message.metadata.get('ttl')}), dropping")
+            return None
+        
         # Skip processing if this is a response to our message (to avoid loops)
         if message.response_to:
             logger.debug(f"Received response message {message.id} (response to {message.response_to}), skipping handler")
@@ -51,18 +57,31 @@ class Agent:
             try:
                 result = await handler(message) if asyncio.iscoroutinefunction(handler) else handler(message)
                 if isinstance(result, dict):
-                    # Create response message using base IntentMessage (not specific intent type)
-                    # This avoids validation errors since responses don't need to match the original intent structure
+                    # Normalize content to structured format
+                    normalized_content = normalize_content(result)
+                    
+                    # Enhanced metadata with diagnostics
+                    response_metadata = {
+                        "framework": self.framework,
+                        "model": self.model,
+                        "capabilities": self.capabilities,
+                        "hop_count": 0,  # Reset hop count for response
+                        "ttl": message.metadata.get("ttl", 3),
+                        "session_id": message.metadata.get("session_id"),
+                        "trace_id": message.metadata.get("trace_id", message.id),
+                        "parent_message_id": message.id,
+                    }
+                    
+                    # Add latency if available
+                    if "latency_ms" in message.metadata:
+                        response_metadata["latency_ms"] = message.metadata.get("latency_ms")
+                    
                     response = IntentMessage(
                         intent=message.intent,  # Keep same intent for tracking
                         from_agent=self.agent_id,
                         to_agent=message.from_agent,
-                        content=result,  # Response content can be any dict
-                        metadata={
-                            "framework": self.framework,
-                            "model": self.model,
-                            "capabilities": self.capabilities,
-                        },
+                        content=normalized_content,  # Use normalized structured content
+                        metadata=response_metadata,
                     )
                     response.response_to = message.id
                     return response
@@ -82,20 +101,40 @@ class Agent:
         content: Dict[str, Any],
         metadata: Optional[Dict[str, Any]] = None,
         context: Optional[Dict[str, Any]] = None,
+        session_id: Optional[str] = None,
+        trace_id: Optional[str] = None,
     ) -> IntentMessage:
-        """Send an intent message"""
+        """Send an intent message with enhanced metadata"""
+        import time
+        start_time = time.time()
+        
+        # Enhanced metadata with diagnostics
+        enhanced_metadata = {
+            "framework": self.framework,
+            "model": self.model,
+            "capabilities": self.capabilities,
+            "hop_count": 0,
+            "ttl": 3,
+            "session_id": session_id or metadata.get("session_id") if metadata else None,
+            "trace_id": trace_id or metadata.get("trace_id") if metadata else None,
+        }
+        
+        if metadata:
+            enhanced_metadata.update(metadata)
+        
         message = create_intent_message(
             intent=intent,
             from_agent=self.agent_id,
             to_agent=to_agent,
             content=content,
-            metadata=metadata or {
-                "framework": self.framework,
-                "model": self.model,
-                "capabilities": self.capabilities,
-            },
+            metadata=enhanced_metadata,
             context=context,
         )
+        
+        # Calculate latency after sending
+        latency_ms = int((time.time() - start_time) * 1000)
+        message.metadata["latency_ms"] = latency_ms
+        
         await self.hub_client.send_message(message)
         return message
     

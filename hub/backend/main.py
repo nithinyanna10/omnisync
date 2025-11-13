@@ -216,6 +216,82 @@ async def get_all_messages(limit: int = 1000, db: Session = Depends(get_db)):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@app.get("/api/conversations/{conversation_id}")
+async def get_conversation_thread(conversation_id: str, db: Session = Depends(get_db)):
+    """Get conversation thread by trace_id or session_id"""
+    try:
+        # Find messages by trace_id or session_id in metadata
+        messages = db.query(Message).filter(
+            (Message.message_metadata.contains({"trace_id": conversation_id})) |
+            (Message.message_metadata.contains({"session_id": conversation_id}))
+        ).order_by(Message.timestamp.asc()).all()
+        
+        result = []
+        for msg in messages:
+            result.append({
+                "id": msg.id,
+                "intent": msg.intent,
+                "from": msg.from_agent,
+                "to": msg.to_agent,
+                "timestamp": msg.timestamp.isoformat() + "Z",
+                "content": msg.content,
+                "response_to": msg.response_to,
+                "metadata": msg.message_metadata,
+            })
+        
+        return {"conversation_id": conversation_id, "messages": result, "count": len(result)}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/conversations")
+async def get_conversation_graph(db: Session = Depends(get_db)):
+    """Get conversation graph structure for visualization"""
+    try:
+        # Get recent messages with response_to relationships
+        messages = db.query(Message).filter(
+            Message.timestamp > datetime.utcnow() - timedelta(hours=1)
+        ).order_by(Message.timestamp.desc()).limit(500).all()
+        
+        # Build graph structure
+        nodes = {}  # agent_id -> node info
+        edges = []  # message relationships
+        
+        for msg in messages:
+            # Add nodes
+            if msg.from_agent not in nodes:
+                nodes[msg.from_agent] = {
+                    "id": msg.from_agent,
+                    "label": msg.from_agent,
+                    "framework": msg.message_metadata.get("framework", "Unknown") if msg.message_metadata else "Unknown",
+                }
+            if msg.to_agent not in nodes and msg.to_agent != "broadcast":
+                nodes[msg.to_agent] = {
+                    "id": msg.to_agent,
+                    "label": msg.to_agent,
+                    "framework": "Unknown",
+                }
+            
+            # Add edges
+            if msg.to_agent != "broadcast":
+                edges.append({
+                    "from": msg.from_agent,
+                    "to": msg.to_agent,
+                    "intent": msg.intent,
+                    "message_id": msg.id,
+                    "response_to": msg.response_to,
+                    "timestamp": msg.timestamp.isoformat() + "Z",
+                })
+        
+        return {
+            "nodes": list(nodes.values()),
+            "edges": edges,
+            "message_count": len(messages),
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @app.post("/api/agents/register")
 async def register_agent(agent_info: dict, db: Session = Depends(get_db)):
     """Register an agent"""

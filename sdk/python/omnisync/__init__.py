@@ -7,11 +7,19 @@ from .protocol import (
     QueryIntent,
     PlanIntent,
     ExecuteIntent,
+    ActIntent,
     ReflectIntent,
     EvaluateIntent,
     NotifyIntent,
     ErrorMessage,
     IntentType,
+)
+from .content_types import (
+    ContentType,
+    create_content,
+    normalize_content,
+    TextContent,
+    TextResponseContent,
 )
 from .agent import Agent, send_intent, broadcast_intent
 from .hub_client import HubClient
@@ -28,11 +36,17 @@ __all__ = [
     "QueryIntent",
     "PlanIntent",
     "ExecuteIntent",
+    "ActIntent",
     "ReflectIntent",
     "EvaluateIntent",
     "NotifyIntent",
     "ErrorMessage",
     "IntentType",
+    "ContentType",
+    "create_content",
+    "normalize_content",
+    "TextContent",
+    "TextResponseContent",
     "Agent",
     "send_intent",
     "broadcast_intent",
