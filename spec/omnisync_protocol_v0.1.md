@@ -43,12 +43,24 @@ All OSP messages follow this base structure:
 #### `version` (string, required)
 - Protocol version: `"0.1"`
 
+#### `schema_version` (string, required)
+- Schema version for validation: `"osp-0.1"`
+- Used for JSON schema validation
+
 #### `id` (string, required)
 - Unique message identifier (UUID v4 recommended)
 
 #### `intent` (string, required)
-- One of: `query`, `plan`, `execute`, `reflect`, `evaluate`, `notify`
+- One of: `query`, `plan`, `act`, `execute`, `reflect`, `evaluate`, `notify`
 - Defines the purpose of the message
+- **OmniIntent Taxonomy**:
+  - `query`: Request info from another agent
+  - `plan`: Request multi-step goal reasoning
+  - `act`: Perform a task
+  - `execute`: Execute a specific task (alias for act)
+  - `reflect`: Self-evaluate reasoning
+  - `evaluate`: Judge another agent's output
+  - `notify`: Passive update
 
 #### `from` (string, required)
 - Source agent identifier
@@ -61,20 +73,54 @@ All OSP messages follow this base structure:
 - ISO 8601 UTC timestamp
 
 #### `metadata` (object, required)
-- Framework information and capabilities
+- Framework information, capabilities, and diagnostics
 - Example:
 ```json
 {
   "framework": "LangChain",
-  "model": "GPT-4o-mini",
+  "model": "gpt-oss:120b-cloud",
   "capabilities": ["query", "plan"],
-  "version": "0.1.0"
+  "hop_count": 0,
+  "ttl": 3,
+  "latency_ms": 45,
+  "token_usage": 123,
+  "session_id": "abc123",
+  "trace_id": "root_msg_83f47548"
 }
 ```
 
+**Metadata Fields**:
+- `framework` (string): Agent framework name
+- `model` (string, optional): LLM model identifier
+- `capabilities` (array): List of supported intents
+- `hop_count` (integer): Number of hops message has taken (anti-loop)
+- `ttl` (integer): Time-to-live in hops (default: 3)
+- `latency_ms` (integer, optional): Message processing latency
+- `token_usage` (integer, optional): Token count for LLM operations
+- `session_id` (string, optional): Conversation session identifier
+- `trace_id` (string, optional): Request trace identifier for threading
+
 #### `content` (object, required)
-- Primary message payload
+- Primary message payload with structured type definitions
 - Structure varies by intent (see Intent Specifications)
+- **Content Types**:
+  - `text`: Plain text content
+  - `text_response`: Text response with confidence/sources
+  - `json_data`: Structured JSON data
+  - `image`: Image data reference
+  - `embedding`: Vector embedding data
+  - `tool_call`: Tool/function call
+  - `error`: Error information
+
+**Structured Content Example**:
+```json
+{
+  "type": "text_response",
+  "data": "I am Agent A responding via OmniSync!",
+  "confidence": 0.98,
+  "sources": ["doc1", "doc2"]
+}
+```
 
 #### `context` (object, optional)
 - Relevant memory, conversation history, or state
@@ -144,9 +190,24 @@ Request or share a plan of action.
 }
 ```
 
-### 3. Execute Intent
+### 3. Act Intent
 
-Request execution of a task or action.
+Request performance of a task or action.
+
+```json
+{
+  "intent": "act",
+  "content": {
+    "action": "fetch_data",
+    "parameters": {"source": "api", "endpoint": "/news"},
+    "timeout": 30
+  }
+}
+```
+
+### 4. Execute Intent
+
+Request execution of a specific task (alias for act, maintained for compatibility).
 
 ```json
 {
@@ -159,7 +220,7 @@ Request execution of a task or action.
 }
 ```
 
-### 4. Reflect Intent
+### 5. Reflect Intent
 
 Share analysis, reasoning, or reflection.
 
@@ -174,7 +235,7 @@ Share analysis, reasoning, or reflection.
 }
 ```
 
-### 5. Evaluate Intent
+### 6. Evaluate Intent
 
 Provide evaluation or feedback.
 
@@ -190,7 +251,7 @@ Provide evaluation or feedback.
 }
 ```
 
-### 6. Notify Intent
+### 7. Notify Intent
 
 Send notifications or status updates.
 

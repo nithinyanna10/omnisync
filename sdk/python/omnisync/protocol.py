@@ -7,22 +7,23 @@ from typing import Any, Dict, List, Optional
 from datetime import datetime
 from uuid import uuid4
 try:
-    from pydantic import BaseModel, Field, validator
+    from pydantic import BaseModel, Field, validator, model_validator
     PYDANTIC_V2 = False
 except ImportError:
-    from pydantic import BaseModel, Field
+    from pydantic import BaseModel, Field, model_validator
     from pydantic import field_validator as validator
     PYDANTIC_V2 = True
 
 
 class IntentType(str, Enum):
-    """Supported intent types"""
-    QUERY = "query"
-    PLAN = "plan"
-    EXECUTE = "execute"
-    REFLECT = "reflect"
-    EVALUATE = "evaluate"
-    NOTIFY = "notify"
+    """Supported intent types - OmniIntent taxonomy"""
+    QUERY = "query"      # Request info from another agent
+    PLAN = "plan"        # Request multi-step goal reasoning
+    ACT = "act"          # Perform a task
+    EXECUTE = "execute"  # Execute a task (alias for act, maintained for compatibility)
+    REFLECT = "reflect"  # Self-evaluate reasoning
+    EVALUATE = "evaluate"  # Judge another agent's output
+    NOTIFY = "notify"    # Passive update
 
 
 class BaseMessage(BaseModel):
@@ -30,11 +31,13 @@ class BaseMessage(BaseModel):
     
     type: str = "intent_message"
     version: str = "0.1"
+    schema_version: str = Field(default="osp-0.1", alias="schema_version")
     id: str = Field(default_factory=lambda: str(uuid4()))
     timestamp: str = Field(default_factory=lambda: datetime.utcnow().isoformat() + "Z")
     
     class Config:
         use_enum_values = True
+        populate_by_name = True
 
 
 class IntentMessage(BaseMessage):
@@ -43,12 +46,35 @@ class IntentMessage(BaseMessage):
     intent: IntentType
     from_agent: str = Field(..., alias="from", serialization_alias="from")
     to_agent: str = Field(..., alias="to", serialization_alias="to")
-    metadata: Dict[str, Any] = {}
-    content: Dict[str, Any] = {}
+    metadata: Dict[str, Any] = Field(default_factory=dict)
+    content: Dict[str, Any] = Field(default_factory=dict)
     context: Optional[Dict[str, Any]] = None
-    attachments: List[Dict[str, Any]] = []
+    attachments: List[Dict[str, Any]] = Field(default_factory=list)
     signature: Optional[str] = None
     response_to: Optional[str] = None
+    
+    @model_validator(mode='after')
+    def set_default_metadata(self):
+        """Set default metadata fields after initialization"""
+        # Initialize metadata with default fields if not provided
+        if not self.metadata:
+            self.metadata = {}
+        
+        # Add hop_count and TTL for anti-loop mechanism if not present
+        if "hop_count" not in self.metadata:
+            self.metadata["hop_count"] = 0
+        if "ttl" not in self.metadata:
+            self.metadata["ttl"] = 3  # Default TTL of 3 hops
+        
+        return self
+    
+    def increment_hop(self) -> bool:
+        """Increment hop count and check TTL. Returns False if TTL exceeded."""
+        self.metadata["hop_count"] = self.metadata.get("hop_count", 0) + 1
+        ttl = self.metadata.get("ttl", 3)
+        if self.metadata["hop_count"] > ttl:
+            return False
+        return True
     
     @validator("to_agent")
     def validate_to_agent(cls, v):
@@ -95,6 +121,18 @@ class ExecuteIntent(IntentMessage):
     def validate_content(cls, v):
         if "task" not in v:
             raise ValueError("Execute intent must include 'task' in content")
+        return v
+
+
+class ActIntent(IntentMessage):
+    """Act intent message - perform a task"""
+    
+    intent: IntentType = IntentType.ACT
+    
+    @validator("content")
+    def validate_content(cls, v):
+        if "action" not in v and "task" not in v:
+            raise ValueError("Act intent must include 'action' or 'task' in content")
         return v
 
 
@@ -158,6 +196,7 @@ def create_intent_message(
         IntentType.QUERY: QueryIntent,
         IntentType.PLAN: PlanIntent,
         IntentType.EXECUTE: ExecuteIntent,
+        IntentType.ACT: ActIntent,
         IntentType.REFLECT: ReflectIntent,
         IntentType.EVALUATE: EvaluateIntent,
         IntentType.NOTIFY: NotifyIntent,

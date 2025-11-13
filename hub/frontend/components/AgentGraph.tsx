@@ -2,6 +2,9 @@
 
 import { useEffect, useRef } from 'react'
 import * as d3 from 'd3'
+import axios from 'axios'
+
+const HUB_URL = process.env.NEXT_PUBLIC_HUB_URL || 'http://localhost:8080'
 
 interface AgentGraphProps {
   messages: any[]
@@ -12,7 +15,7 @@ export default function AgentGraph({ messages, agents }: AgentGraphProps) {
   const svgRef = useRef<SVGSVGElement>(null)
 
   useEffect(() => {
-    if (!svgRef.current || messages.length === 0) return
+    if (!svgRef.current) return
 
     const svg = d3.select(svgRef.current)
     svg.selectAll('*').remove()
@@ -21,25 +24,58 @@ export default function AgentGraph({ messages, agents }: AgentGraphProps) {
     const height = 400
     svg.attr('width', width).attr('height', height)
 
-    // Create nodes from agents
-    const nodes = agents.map((agent) => ({
-      id: agent.agent_id,
-      name: agent.name,
-      framework: agent.framework,
+    // Fetch conversation graph from API
+    axios.get(`${HUB_URL}/api/conversations`)
+      .then((response) => {
+        const graphData = response.data
+        renderGraph(graphData.nodes || agents, graphData.edges || [], svg, width, height)
+      })
+      .catch(() => {
+        // Fallback to local data
+        renderGraph(agents, messages, svg, width, height)
+      })
+  }, [messages, agents])
+
+  function renderGraph(nodesData: any[], edgesData: any[], svg: any, width: number, height: number) {
+    // Create nodes from agents/graph data
+    const nodes = nodesData.map((agent) => ({
+      id: agent.agent_id || agent.id,
+      name: agent.name || agent.label,
+      framework: agent.framework || 'Unknown',
     }))
 
-    // Create links from messages
-    const linkMap = new Map<string, number>()
-    messages.forEach((msg) => {
-      if (msg.from && msg.to && msg.to !== 'broadcast') {
-        const key = `${msg.from}-${msg.to}`
-        linkMap.set(key, (linkMap.get(key) || 0) + 1)
-      }
-    })
+    // Create links from messages/edges
+    const linkMap = new Map<string, { count: number; intents: Set<string> }>()
+    
+    if (edgesData.length > 0 && edgesData[0].from) {
+      // Use graph API format
+      edgesData.forEach((edge: any) => {
+        const key = `${edge.from}-${edge.to}`
+        if (!linkMap.has(key)) {
+          linkMap.set(key, { count: 0, intents: new Set() })
+        }
+        const link = linkMap.get(key)!
+        link.count += 1
+        link.intents.add(edge.intent)
+      })
+    } else {
+      // Use message format
+      edgesData.forEach((msg: any) => {
+        if (msg.from && msg.to && msg.to !== 'broadcast') {
+          const key = `${msg.from}-${msg.to}`
+          if (!linkMap.has(key)) {
+            linkMap.set(key, { count: 0, intents: new Set() })
+          }
+          const link = linkMap.get(key)!
+          link.count += 1
+          if (msg.intent) link.intents.add(msg.intent)
+        }
+      })
+    }
 
-    const links = Array.from(linkMap.entries()).map(([key, value]) => {
+    const links = Array.from(linkMap.entries()).map(([key, data]) => {
       const [source, target] = key.split('-')
-      return { source, target, value }
+      return { source, target, value: data.count, intents: Array.from(data.intents) }
     })
 
     // Create force simulation
@@ -62,9 +98,21 @@ export default function AgentGraph({ messages, agents }: AgentGraphProps) {
       .data(links)
       .enter()
       .append('line')
-      .attr('stroke', '#999')
+      .attr('stroke', (d: any) => {
+        const intentColors: Record<string, string> = {
+          query: '#3b82f6',
+          plan: '#10b981',
+          act: '#f59e0b',
+          execute: '#f59e0b',
+          reflect: '#8b5cf6',
+          evaluate: '#ef4444',
+          notify: '#6b7280',
+        }
+        const primaryIntent = d.intents?.[0] || 'notify'
+        return intentColors[primaryIntent] || '#999'
+      })
       .attr('stroke-opacity', 0.6)
-      .attr('stroke-width', (d) => Math.sqrt(d.value) * 2)
+      .attr('stroke-width', (d: any) => Math.sqrt(d.value) * 2)
 
     // Draw nodes
     const node = svg
