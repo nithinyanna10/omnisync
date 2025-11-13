@@ -8,7 +8,7 @@ from fastapi.responses import JSONResponse
 from sqlalchemy import create_engine, Column, String, JSON, DateTime, Text
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, Session
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import List, Dict, Any, Optional
 import json
 import redis
@@ -148,21 +148,28 @@ async def create_message(message: dict, db: Session = Depends(get_db)):
 async def get_messages(agent_id: str, limit: int = 100, db: Session = Depends(get_db)):
     """Get messages for an agent"""
     try:
-        # Try Redis first
+        # Try Redis first (unprocessed messages)
         messages_data = redis_client.lrange(f"messages:{agent_id}", 0, limit - 1)
         if messages_data:
             messages = [json.loads(msg) for msg in messages_data]
-            # Clear after reading
+            # Clear after reading to prevent duplicate processing
             redis_client.delete(f"messages:{agent_id}")
             return {"messages": messages}
         
-        # Fallback to database
+        # Fallback to database - get unprocessed messages
+        # Use a flag or timestamp to track processed messages
         messages = db.query(Message).filter(
-            (Message.to_agent == agent_id) | (Message.to_agent == "broadcast")
+            ((Message.to_agent == agent_id) | (Message.to_agent == "broadcast"))
+            & (Message.timestamp > datetime.utcnow() - timedelta(minutes=5))  # Only recent messages
         ).order_by(Message.timestamp.desc()).limit(limit).all()
         
         result = []
+        processed_ids = set()
         for msg in messages:
+            # Avoid duplicates
+            if msg.id in processed_ids:
+                continue
+            processed_ids.add(msg.id)
             result.append({
                 "id": msg.id,
                 "type": msg.type,

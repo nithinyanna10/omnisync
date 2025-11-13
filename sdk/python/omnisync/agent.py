@@ -133,10 +133,16 @@ class Agent:
     
     async def _message_loop(self):
         """Continuously listen for messages"""
+        processed_message_ids = set()  # Track processed messages to avoid duplicates
         while self.running:
             try:
                 messages = await self.hub_client.get_messages(self.agent_id)
                 for message in messages:
+                    # Skip if already processed
+                    if message.id in processed_message_ids:
+                        continue
+                    processed_message_ids.add(message.id)
+                    
                     # Only process messages that are not responses (responses are handled differently)
                     if not message.response_to:
                         response = await self.handle_message(message)
@@ -145,6 +151,11 @@ class Agent:
                     else:
                         # Log response messages but don't process them through handlers
                         logger.debug(f"Received response {message.id} from {message.from_agent}")
+                
+                # Clean up old processed IDs to prevent memory growth
+                if len(processed_message_ids) > 1000:
+                    processed_message_ids.clear()
+                    
                 await asyncio.sleep(0.5)  # Increased delay to reduce polling frequency
             except Exception as e:
                 logger.error(f"Error in message loop: {e}")
