@@ -73,13 +73,20 @@ async def main():
         use_ollama = False
         ollama_client = None
     
-    # Create agents with realistic capabilities
+    # A: Generate session and trace IDs at the start
+    session_id = f"session_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+    import time
+    trace_id = f"trace_{time.time()}"
+    
+    # Create agents with realistic capabilities and session/trace IDs
     agent_a = Agent(
         name="DataAnalyst",
         framework="OmniSync",
         hub_url="http://localhost:8080",
         model="gpt-oss:120b-cloud" if use_ollama else "gpt-4",
-        capabilities=["query", "plan", "evaluate"]
+        capabilities=["query", "plan", "evaluate"],
+        session_id=session_id,  # A: Inject at start
+        trace_id=trace_id  # A: Inject at start
     )
     
     agent_b = Agent(
@@ -87,7 +94,9 @@ async def main():
         framework="OmniSync",
         hub_url="http://localhost:8080",
         model="gpt-oss:120b-cloud" if use_ollama else "gpt-4",
-        capabilities=["act", "execute", "notify"]
+        capabilities=["act", "execute", "notify"],
+        session_id=session_id,  # A: Inject at start
+        trace_id=trace_id  # A: Inject at start
     )
     
     # Agent A: Data Analyst - handles queries with detailed analysis
@@ -199,9 +208,8 @@ async def main():
     print("📊 SCENARIO 1: Data Query")
     print("="*80)
     print(f"\n📤 [TaskExecutor] → [DataAnalyst]: Query about data processing status")
-    
-    session_id = f"session_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
-    trace_id = f"trace_{datetime.now().timestamp()}"
+    print(f"   Session ID: {session_id}")
+    print(f"   Trace ID: {trace_id}")
     
     query_msg = await agent_b.send(
         IntentType.QUERY,
@@ -213,9 +221,8 @@ async def main():
                 "requested_metrics": ["throughput", "error_rates"],
                 "time_range": "last_24_hours"
             }
-        },
-        session_id=session_id,
-        trace_id=trace_id
+        }
+        # A: Session/trace IDs already set in agent initialization
     )
     print_message_details(query_msg, "→ SENT")
     
@@ -241,9 +248,8 @@ async def main():
             },
             "priority": "high",
             "timeout_seconds": 30
-        },
-        session_id=session_id,
-        trace_id=trace_id
+        }
+        # A: Session/trace IDs already set in agent initialization
     )
     print_message_details(act_msg, "→ SENT")
     
@@ -268,9 +274,8 @@ async def main():
                 "duration_seconds": 45.2,
                 "next_batch_eta": "2025-11-12T19:00:00Z"
             }
-        },
-        session_id=session_id,
-        trace_id=trace_id
+        }
+        # A: Session/trace IDs already set in agent initialization
     )
     print_message_details(notify_msg, "→ SENT")
     

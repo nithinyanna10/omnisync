@@ -11,6 +11,7 @@ from .protocol import (
     ReflectIntent,
     EvaluateIntent,
     NotifyIntent,
+    AckIntent,
     ErrorMessage,
     IntentType,
 )
@@ -40,6 +41,7 @@ __all__ = [
     "ReflectIntent",
     "EvaluateIntent",
     "NotifyIntent",
+    "AckIntent",
     "ErrorMessage",
     "IntentType",
     "ContentType",

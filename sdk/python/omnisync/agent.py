@@ -22,6 +22,8 @@ class Agent:
         hub_url: str = "http://localhost:8080",
         model: Optional[str] = None,
         capabilities: Optional[list] = None,
+        session_id: Optional[str] = None,
+        trace_id: Optional[str] = None,
     ):
         self.name = name
         self.framework = framework
@@ -31,6 +33,12 @@ class Agent:
         self.capabilities = capabilities or []
         self.handlers: Dict[IntentType, Callable] = {}
         self.running = False
+        
+        # Session and trace tracking - set at initialization
+        import time
+        from datetime import datetime
+        self.default_session_id = session_id or f"session_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+        self.default_trace_id = trace_id or f"trace_{time.time()}"
         
     def on(self, intent: str):
         """Decorator to register intent handlers"""
@@ -60,21 +68,32 @@ class Agent:
                     # Normalize content to structured format
                     normalized_content = normalize_content(result)
                     
-                    # Enhanced metadata with diagnostics
+                    import time
+                    import psutil
+                    response_start = time.time()
+                    
+                    # Enhanced metadata with diagnostics - propagate session/trace
                     response_metadata = {
                         "framework": self.framework,
+                        "framework_version": "0.1.0",
                         "model": self.model,
                         "capabilities": self.capabilities,
                         "hop_count": 0,  # Reset hop count for response
                         "ttl": message.metadata.get("ttl", 3),
-                        "session_id": message.metadata.get("session_id"),
-                        "trace_id": message.metadata.get("trace_id", message.id),
+                        "session_id": message.metadata.get("session_id") or self.default_session_id,  # A: Propagate session
+                        "trace_id": message.metadata.get("trace_id") or self.default_trace_id,  # A: Propagate trace
                         "parent_message_id": message.id,
+                        # D: System metrics
+                        "cpu_usage": psutil.cpu_percent(interval=0.1),
+                        "mem_usage": psutil.virtual_memory().percent,
                     }
                     
                     # Add latency if available
                     if "latency_ms" in message.metadata:
                         response_metadata["latency_ms"] = message.metadata.get("latency_ms")
+                    
+                    response_time_ms = int((time.time() - response_start) * 1000)
+                    response_metadata["response_time_ms"] = response_time_ms
                     
                     response = IntentMessage(
                         intent=message.intent,  # Keep same intent for tracking
@@ -106,17 +125,26 @@ class Agent:
     ) -> IntentMessage:
         """Send an intent message with enhanced metadata"""
         import time
+        import psutil
         start_time = time.time()
+        
+        # Use provided session/trace IDs or fall back to agent defaults
+        final_session_id = session_id or self.default_session_id
+        final_trace_id = trace_id or self.default_trace_id
         
         # Enhanced metadata with diagnostics
         enhanced_metadata = {
             "framework": self.framework,
+            "framework_version": "0.1.0",  # D: Framework version
             "model": self.model,
             "capabilities": self.capabilities,
             "hop_count": 0,
             "ttl": 3,
-            "session_id": session_id or metadata.get("session_id") if metadata else None,
-            "trace_id": trace_id or metadata.get("trace_id") if metadata else None,
+            "session_id": final_session_id,
+            "trace_id": final_trace_id,
+            # D: System metrics
+            "cpu_usage": psutil.cpu_percent(interval=0.1),
+            "mem_usage": psutil.virtual_memory().percent,
         }
         
         if metadata:
@@ -134,6 +162,7 @@ class Agent:
         # Calculate latency after sending
         latency_ms = int((time.time() - start_time) * 1000)
         message.metadata["latency_ms"] = latency_ms
+        message.metadata["response_time_ms"] = latency_ms  # D: Response time
         
         await self.hub_client.send_message(message)
         return message
@@ -201,15 +230,20 @@ class Agent:
                 await asyncio.sleep(1)
     
     async def stop(self):
-        """Stop the agent"""
+        """Stop the agent (B: Proper session cleanup)"""
         self.running = False
-        # Give message loop a moment to finish
-        await asyncio.sleep(0.2)
+        # Give message loop time to finish
+        await asyncio.sleep(0.5)
+        
+        # Properly close hub client session
         try:
-            if self.hub_client.session:
-                await self.hub_client.disconnect()
+            await self.hub_client.disconnect()
         except Exception as e:
-            logger.error(f"Error disconnecting: {e}")
+            logger.error(f"Error disconnecting hub client: {e}")
+        
+        # Additional cleanup - ensure all pending tasks complete
+        await asyncio.sleep(0.2)
+        
         logger.info(f"Agent {self.agent_id} stopped")
 
 
