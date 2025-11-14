@@ -30,76 +30,102 @@ class OllamaClient:
             self.session = None
     
     async def generate(self, prompt: str, stream: bool = False) -> str:
-        """Generate text using Ollama"""
-        if not self.session:
-            await self.connect()
-        
-        try:
-            async with self.session.post(
-                f"{self.base_url}/api/generate",
-                json={
-                    "model": self.model,
-                    "prompt": prompt,
-                    "stream": stream,
-                },
-            ) as response:
-                if response.status == 200:
-                    if stream:
-                        full_response = ""
-                        async for line in response.content:
-                            if line:
+        """Generate text using Ollama (B: Fixed session handling)"""
+        # B: Use context manager for proper session cleanup
+        async with aiohttp.ClientSession() as session:
+            try:
+                async with session.post(
+                    f"{self.base_url}/api/generate",
+                    json={
+                        "model": self.model,
+                        "prompt": prompt,
+                        "stream": stream,
+                    },
+                ) as response:
+                    if response.status == 200:
+                        if stream:
+                            full_response = ""
+                            async for line in response.content:
+                                if line:
+                                    try:
+                                        data = json.loads(line)
+                                        if "response" in data:
+                                            full_response += data["response"]
+                                    except json.JSONDecodeError:
+                                        continue
+                            return full_response
+                        else:
+                            # Handle text/plain responses
+                            content_type = response.headers.get('Content-Type', '')
+                            if 'application/json' in content_type:
+                                data = await response.json()
+                                return data.get("response", "")
+                            else:
+                                # Fallback for text/plain responses
+                                text = await response.text()
                                 try:
-                                    data = json.loads(line)
-                                    if "response" in data:
-                                        full_response += data["response"]
-                                except json.JSONDecodeError:
-                                    continue
-                        return full_response
+                                    data = json.loads(text)
+                                    return data.get("response", text)
+                                except:
+                                    return text
                     else:
-                        data = await response.json()
-                        return data.get("response", "")
-                else:
-                    logger.error(f"Ollama API error: {response.status}")
-                    return ""
-        except Exception as e:
-            logger.error(f"Error calling Ollama: {e}")
-            return ""
+                        error_text = await response.text()
+                        logger.error(f"Ollama API error: {response.status}, {error_text}")
+                        return ""
+            except aiohttp.ClientError as e:
+                logger.error(f"Ollama connection error: {e}")
+                return ""
+            except Exception as e:
+                logger.error(f"Error calling Ollama: {e}")
+                return ""
     
     async def chat(self, messages: list, stream: bool = False) -> str:
-        """Chat with Ollama using messages format"""
-        if not self.session:
-            await self.connect()
-        
-        try:
-            async with self.session.post(
-                f"{self.base_url}/api/chat",
-                json={
-                    "model": self.model,
-                    "messages": messages,
-                    "stream": stream,
-                },
-            ) as response:
-                if response.status == 200:
-                    if stream:
-                        full_response = ""
-                        async for line in response.content:
-                            if line:
+        """Chat with Ollama using messages format (B: Fixed session handling)"""
+        # B: Use context manager for proper session cleanup
+        async with aiohttp.ClientSession() as session:
+            try:
+                async with session.post(
+                    f"{self.base_url}/api/chat",
+                    json={
+                        "model": self.model,
+                        "messages": messages,
+                        "stream": stream,
+                    },
+                ) as response:
+                    if response.status == 200:
+                        if stream:
+                            full_response = ""
+                            async for line in response.content:
+                                if line:
+                                    try:
+                                        data = json.loads(line)
+                                        if "message" in data and "content" in data["message"]:
+                                            full_response += data["message"]["content"]
+                                    except json.JSONDecodeError:
+                                        continue
+                            return full_response
+                        else:
+                            content_type = response.headers.get('Content-Type', '')
+                            if 'application/json' in content_type:
+                                data = await response.json()
+                                return data.get("message", {}).get("content", "")
+                            else:
+                                text = await response.text()
                                 try:
-                                    data = json.loads(line)
-                                    if "message" in data and "content" in data["message"]:
-                                        full_response += data["message"]["content"]
-                                except json.JSONDecodeError:
-                                    continue
-                        return full_response
+                                    data = json.loads(text)
+                                    return data.get("message", {}).get("content", text)
+                                except:
+                                    return text
                     else:
-                        data = await response.json()
-                        return data.get("message", {}).get("content", "")
-                else:
-                    logger.error(f"Ollama API error: {response.status}")
-                    return ""
-        except Exception as e:
-            logger.error(f"Error calling Ollama: {e}")
-            return ""
+                        error_text = await response.text()
+                        logger.error(f"Ollama API error: {response.status}, {error_text}")
+                        return ""
+            except aiohttp.ClientError as e:
+                logger.error(f"Ollama connection error: {e}")
+                return ""
+            except Exception as e:
+                logger.error(f"Error calling Ollama: {e}")
+                return ""
 
 
 def create_ollama_agent_handler(ollama_client: OllamaClient, system_prompt: Optional[str] = None):

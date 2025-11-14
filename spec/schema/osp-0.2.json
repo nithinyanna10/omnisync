@@ -1,0 +1,105 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "OmniSync Protocol v0.2",
+  "description": "JSON Schema for OmniSync Protocol messages v0.2 - Enhanced with ACK intent, enriched metadata, and content types",
+  "type": "object",
+  "required": ["type", "version", "schema_version", "id", "intent", "from", "to", "timestamp"],
+  "properties": {
+    "type": {
+      "type": "string",
+      "enum": ["intent_message", "error_message"],
+      "default": "intent_message"
+    },
+    "version": {
+      "type": "string",
+      "pattern": "^0\\.1$"
+    },
+    "schema_version": {
+      "type": "string",
+      "pattern": "^osp-0\\.2$"
+    },
+    "id": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "intent": {
+      "type": "string",
+      "enum": ["query", "plan", "act", "execute", "reflect", "evaluate", "notify", "ack"]
+    },
+    "from": {
+      "type": "string",
+      "minLength": 1
+    },
+    "to": {
+      "type": "string",
+      "minLength": 1
+    },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "metadata": {
+      "type": "object",
+      "properties": {
+        "framework": {"type": "string"},
+        "framework_version": {"type": "string"},
+        "model": {"type": "string"},
+        "capabilities": {
+          "type": "array",
+          "items": {"type": "string"}
+        },
+        "hop_count": {"type": "integer", "minimum": 0},
+        "ttl": {"type": "integer", "minimum": 1, "maximum": 10},
+        "latency_ms": {"type": "integer", "minimum": 0},
+        "response_time_ms": {"type": "integer", "minimum": 0},
+        "token_usage": {"type": "integer", "minimum": 0},
+        "token_count": {"type": "integer", "minimum": 0},
+        "cpu_usage": {"type": "number", "minimum": 0, "maximum": 100},
+        "mem_usage": {"type": "number", "minimum": 0, "maximum": 100},
+        "session_id": {"type": "string"},
+        "trace_id": {"type": "string"},
+        "parent_message_id": {"type": "string"}
+      },
+      "additionalProperties": true
+    },
+    "content": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": ["text", "text_response", "json_data", "image", "embedding", "tool_call", "error", "metrics"]
+        },
+        "data": {},
+        "confidence": {"type": "number", "minimum": 0, "maximum": 1},
+        "sources": {
+          "type": "array",
+          "items": {}
+        },
+        "received": {"type": "boolean"},
+        "response_to": {"type": "string"}
+      },
+      "additionalProperties": true
+    },
+    "context": {
+      "type": ["object", "null"],
+      "additionalProperties": true
+    },
+    "attachments": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": true
+      }
+    },
+    "signature": {
+      "type": ["string", "null"],
+      "default": null
+    },
+    "response_to": {
+      "type": ["string", "null"],
+      "format": "uuid"
+    }
+  },
+  "additionalProperties": false
+}
+

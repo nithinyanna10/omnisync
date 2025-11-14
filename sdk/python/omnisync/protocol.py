@@ -24,6 +24,7 @@ class IntentType(str, Enum):
     REFLECT = "reflect"  # Self-evaluate reasoning
     EVALUATE = "evaluate"  # Judge another agent's output
     NOTIFY = "notify"    # Passive update
+    ACK = "ack"          # Protocol-level acknowledgment (C: New intent)
 
 
 class BaseMessage(BaseModel):
@@ -31,7 +32,7 @@ class BaseMessage(BaseModel):
     
     type: str = "intent_message"
     version: str = "0.1"
-    schema_version: str = Field(default="osp-0.1", alias="schema_version")
+    schema_version: str = Field(default="osp-0.2", alias="schema_version")  # E: Schema v0.2
     id: str = Field(default_factory=lambda: str(uuid4()))
     timestamp: str = Field(default_factory=lambda: datetime.utcnow().isoformat() + "Z")
     
@@ -172,6 +173,18 @@ class NotifyIntent(IntentMessage):
         return v
 
 
+class AckIntent(IntentMessage):
+    """Acknowledgment intent message - protocol-level ACK (C: New intent)"""
+    
+    intent: IntentType = IntentType.ACK
+    
+    @validator("content")
+    def validate_content(cls, v):
+        if "received" not in v:
+            raise ValueError("Ack intent must include 'received' in content")
+        return v
+
+
 class ErrorMessage(BaseMessage):
     """Error message structure"""
     
@@ -200,6 +213,7 @@ def create_intent_message(
         IntentType.REFLECT: ReflectIntent,
         IntentType.EVALUATE: EvaluateIntent,
         IntentType.NOTIFY: NotifyIntent,
+        IntentType.ACK: AckIntent,  # C: Acknowledgment intent
     }
     
     msg_class = intent_classes.get(intent, IntentMessage)

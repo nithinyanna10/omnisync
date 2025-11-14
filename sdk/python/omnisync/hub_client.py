@@ -3,6 +3,7 @@ OmniSync Hub Client - Communication with OmniSync Hub
 """
 
 import aiohttp
+import asyncio
 import logging
 from typing import List, Optional, Dict, Any
 from .protocol import IntentMessage
@@ -26,12 +27,23 @@ class HubClient:
         logger.info(f"Connected to hub at {self.hub_url}")
     
     async def disconnect(self):
-        """Disconnect from the hub"""
-        if self.ws:
-            await self.ws.close()
-            self.ws = None
-        if self.session:
-            await self.session.close()
+        """Disconnect from the hub (B: Proper session cleanup)"""
+        try:
+            if self.ws:
+                await self.ws.close()
+                self.ws = None
+        except Exception as e:
+            logger.debug(f"Error closing websocket: {e}")
+        
+        try:
+            if self.session:
+                # Close all pending connections
+                await self.session.close()
+                # Wait a bit for cleanup
+                await asyncio.sleep(0.1)
+                self.session = None
+        except Exception as e:
+            logger.debug(f"Error closing session: {e}")
             self.session = None
     
     async def send_message(self, message: IntentMessage) -> bool:

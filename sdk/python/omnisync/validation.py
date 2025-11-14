@@ -47,11 +47,11 @@ def validate_message(message: Dict[str, Any], schema_version: str = "0.1") -> tu
 
 def validate_message_dict(message_dict: Dict[str, Any]) -> tuple[bool, Optional[str]]:
     """Validate message dict, auto-detecting schema version"""
-    schema_version = message_dict.get("schema_version", "osp-0.1")
+    schema_version = message_dict.get("schema_version", "osp-0.2")
     if schema_version.startswith("osp-"):
         version = schema_version.replace("osp-", "")
     else:
-        version = "0.1"
+        version = "0.2"  # Default to latest version
     
     return validate_message(message_dict, version)
 
