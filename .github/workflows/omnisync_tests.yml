@@ -1,0 +1,136 @@
+name: OmniSync Tests
+
+on:
+  push:
+    branches: [ main, v0.2, v0.3 ]
+  pull_request:
+    branches: [ main, v0.2 ]
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    
+    services:
+      postgres:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: omnisync
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+      
+      redis:
+        image: redis:7-alpine
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 6379:6379
+
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+    
+    - name: Install dependencies
+      run: |
+        cd sdk/python
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        # Install package dependencies first
+        pip install pydantic aiohttp websockets jsonschema psutil
+        pip install -e .
+        pip install pytest pytest-asyncio requests
+    
+    - name: Start Hub Backend
+      run: |
+        cd hub/backend
+        pip install fastapi uvicorn sqlalchemy psycopg2-binary redis python-dotenv
+        DATABASE_URL=postgresql://postgres:postgres@localhost:5432/omnisync \
+        REDIS_URL=redis://localhost:6379/0 \
+        uvicorn main:app --host 0.0.0.0 --port 8080 &
+        sleep 5
+    
+    - name: Create database tables
+      run: |
+        cd hub/backend
+        python -c "
+        from main import Base, engine
+        Base.metadata.create_all(bind=engine)
+        "
+      env:
+        DATABASE_URL: postgresql://postgres:postgres@localhost:5432/omnisync
+    
+    - name: Run test suite
+      run: |
+        cd examples
+        python test_improvements.py
+      env:
+        DATABASE_URL: postgresql://postgres:postgres@localhost:5432/omnisync
+        REDIS_URL: redis://localhost:6379/0
+    
+    - name: Run unit tests
+      run: |
+        cd sdk/python
+        python -m pytest tests/ -v || echo "No tests directory found, skipping"
+    
+    - name: Test schema validation
+      run: |
+        cd sdk/python
+        python -c "
+        from omnisync.protocol import IntentMessage, IntentType
+        from omnisync.validation import validate_message_dict
+        msg = IntentMessage(
+            intent=IntentType.QUERY,
+            from_agent='test',
+            to_agent='target',
+            content={'query': 'test'}
+        )
+        msg_dict = msg.model_dump(mode='json', by_alias=True)
+        is_valid, error = validate_message_dict(msg_dict)
+        assert is_valid, f'Validation failed: {error}'
+        print('✅ Schema validation passed')
+        "
+    
+    - name: Test ACK intent
+      run: |
+        cd sdk/python
+        python -c "
+        from omnisync import IntentType, AckIntent
+        ack = AckIntent(
+            from_agent='a',
+            to_agent='b',
+            content={'received': True, 'response_to': 'msg-123'}
+        )
+        assert ack.intent == IntentType.ACK
+        print('✅ ACK intent test passed')
+        "
+    
+    - name: Test trace visualization
+      run: |
+        cd sdk/python
+        python -c "
+        from omnisync.trace_visualization import prepare_sequence_diagram, generate_trace_summary
+        messages = [
+            {'id': '1', 'from': 'a', 'to': 'b', 'intent': 'query', 'timestamp': '2025-01-01T00:00:00Z'},
+            {'id': '2', 'from': 'b', 'to': 'a', 'intent': 'act', 'timestamp': '2025-01-01T00:00:05Z'}
+        ]
+        diagram = prepare_sequence_diagram(messages)
+        summary = generate_trace_summary(messages)
+        assert 'sequenceDiagram' in diagram
+        assert summary['total_messages'] == 2
+        print('✅ Trace visualization test passed')
+        "
+

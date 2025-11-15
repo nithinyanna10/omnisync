@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import AgentGraph from '../components/AgentGraph'
+import GraphView from '../components/GraphView'
 import MessageList from '../components/MessageList'
 import StatsPanel from '../components/StatsPanel'
 import axios from 'axios'
@@ -46,6 +47,13 @@ export default function Home() {
 
       <main className="max-w-7xl mx-auto px-4 py-6">
         <StatsPanel stats={stats} agents={agents} />
+
+        <div className="mt-6">
+          <div className="bg-white rounded-lg shadow p-6 mb-6">
+            <h2 className="text-xl font-semibold mb-4">Live Conversation Graph (v0.3)</h2>
+            <GraphView autoRefresh={true} refreshInterval={5000} />
+          </div>
+        </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-6">
           <div className="bg-white rounded-lg shadow p-6">

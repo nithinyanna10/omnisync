@@ -30,6 +30,14 @@ from .adapters import (
     CrewAIAdapter,
     LlamaIndexAdapter,
 )
+from .dataset import save_trace_dataset, load_trace_dataset, export_trace_from_hub
+from .trace_visualization import (
+    prepare_sequence_diagram,
+    prepare_force_graph_data,
+    prepare_trace_log,
+    generate_trace_summary,
+    extract_conversation_thread,
+)
 
 __version__ = "0.1.0"
 __all__ = [
@@ -57,5 +65,13 @@ __all__ = [
     "AutoGenAdapter",
     "CrewAIAdapter",
     "LlamaIndexAdapter",
+    "save_trace_dataset",
+    "load_trace_dataset",
+    "export_trace_from_hub",
+    "prepare_sequence_diagram",
+    "prepare_force_graph_data",
+    "prepare_trace_log",
+    "generate_trace_summary",
+    "extract_conversation_thread",
 ]
 
