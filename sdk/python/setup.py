@@ -3,9 +3,15 @@ Setup script for OmniSync Python SDK
 """
 
 from setuptools import setup, find_packages
+from pathlib import Path
 
-with open("README.md", "r", encoding="utf-8") as fh:
-    long_description = fh.read()
+# Read README if it exists, otherwise use a default
+readme_path = Path(__file__).parent / "README.md"
+if readme_path.exists():
+    with open(readme_path, "r", encoding="utf-8") as fh:
+        long_description = fh.read()
+else:
+    long_description = "OmniSync Protocol SDK for Python - Interoperability layer for AI agent frameworks"
 
 setup(
     name="omnisync",
