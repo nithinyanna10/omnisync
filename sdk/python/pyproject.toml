@@ -8,6 +8,7 @@ version = "0.1.0"
 description = "OmniSync Protocol SDK for Python - Interoperability layer for AI agent frameworks"
 readme = "README.md"
 requires-python = ">=3.8"
+license = {text = "MIT"}
 authors = [
     {name = "OmniSync Team"}
 ]
@@ -22,6 +23,13 @@ classifiers = [
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
 ]
+keywords = ["ai", "agents", "multi-agent", "protocol", "interoperability", "langchain", "autogen", "crewai"]
+project-urls = {
+    Homepage = "https://github.com/nithinyanna10/omnisync",
+    Documentation = "https://github.com/nithinyanna10/omnisync",
+    Repository = "https://github.com/nithinyanna10/omnisync",
+    Issues = "https://github.com/nithinyanna10/omnisync/issues",
+}
 dependencies = [
     "pydantic>=2.0.0",
     "aiohttp>=3.8.0",
