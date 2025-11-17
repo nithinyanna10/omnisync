@@ -4,8 +4,34 @@ Interoperability layer for AI agent frameworks using the OmniSync Protocol (OSP)
 
 ## Installation
 
+### From PyPI (Recommended)
+
 ```bash
+pip install omnisync
+```
+
+### Development Installation
+
+```bash
+git clone https://github.com/nithinyanna10/omnisync.git
+cd omnisync/sdk/python
 pip install -e .
+```
+
+### With Optional Dependencies
+
+```bash
+# With LangChain adapter
+pip install omnisync[langchain]
+
+# With AutoGen adapter
+pip install omnisync[autogen]
+
+# With CrewAI adapter
+pip install omnisync[crewai]
+
+# With all adapters
+pip install omnisync[langchain,autogen,crewai]
 ```
 
 ## Quick Start
