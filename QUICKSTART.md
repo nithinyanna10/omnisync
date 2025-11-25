@@ -1,4 +1,4 @@
-# OmniSync Quick Start Guide
+## OmniSync Quick Start Guide
 
 Get OmniSync running in 5 minutes!
 
